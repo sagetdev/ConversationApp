@@ -20,7 +20,7 @@ export async function createLiveSpeechSession(
         inputAudioTranscription: {}
       },
       callbacks: {
-        onmessage: (message: any) => {
+        onmessage: (message) => {
           const content = message.serverContent;
           const partial = content?.interimInputTranscription?.text;
           const finalText = content?.inputTranscription?.text;
@@ -32,11 +32,14 @@ export async function createLiveSpeechSession(
             onEvent({ type: "transcript.final", text: finalText.trim() });
           }
         },
-        onerror: (event: any) => {
-          onEvent({ type: "speech.error", message: event?.message ?? "Gemini Live connection failed." });
+        onerror: (event) => {
+          onEvent({
+            type: "speech.error",
+            message: event.message || "Gemini Live connection failed."
+          });
         },
-        onclose: (event: any) => {
-          if (event?.code && event.code !== 1000) {
+        onclose: (event) => {
+          if (event.code && event.code !== 1000) {
             onEvent({
               type: "speech.error",
               message: event.reason || "Gemini Live session closed unexpectedly."
