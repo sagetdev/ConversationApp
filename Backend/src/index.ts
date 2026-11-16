@@ -6,6 +6,7 @@ import { env } from "./config/env.js";
 import healthRoutes from "./routes/health.routes.js";
 import conversationRoutes from "./routes/conversation.routes.js";
 import translationRoutes from "./routes/translation.routes.js";
+import speechRoutes from "./routes/speech.routes.js";
 
 const app = express();
 
@@ -21,7 +22,7 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "10mb" }));
 
 app.use("/api", rateLimit({
   windowMs: 60_000,
@@ -37,6 +38,7 @@ app.get("/", (_req, res) => {
 app.use("/api/v1/health", healthRoutes);
 app.use("/api/v1/conversation", conversationRoutes);
 app.use("/api/v1/translation", translationRoutes);
+app.use("/api/v1/speech", speechRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({ success: false, error: "Route not found." });
