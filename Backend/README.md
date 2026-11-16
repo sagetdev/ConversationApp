@@ -38,6 +38,7 @@ Base URL: `http://localhost:4000/api/v1`
 - `POST /conversation/process`: translate a message and generate three replies
 - `POST /speech/transcribe`: transcribe a base64 audio payload
 - `POST /audio/synthesize`: generate WAV speech audio from text
+- `POST /live/token`: issue a short-lived, single-use Gemini Live API token
 
 ### Translation request
 
@@ -79,11 +80,27 @@ Base URL: `http://localhost:4000/api/v1`
 }
 ```
 
-The speech synthesis endpoint returns base64-encoded mono WAV audio at 24 kHz.
+### Live session token request
+
+```json
+{
+  "sourceLanguage": "English",
+  "targetLanguage": "French"
+}
+```
+
+The Live endpoint returns a one-use ephemeral token. The client uses it to connect directly
+to Gemini Live over WebSocket. Send raw 16-bit PCM audio at 16 kHz; Gemini returns audio
+at 24 kHz. Input/output transcription events are enabled. The Live session is configured
+as a simultaneous interpreter and speaks only the translation.
+
+The endpoint is rate-limited to five token requests per IP per five minutes. Before production,
+add user authentication and per-account quotas; IP rate limiting alone is not sufficient.
 
 ## Current scope and limitations
 
 The backend currently provides request/response translation, three reply suggestions,
-audio transcription and speech synthesis. It does not yet provide persistent conversation
-history, user authentication, a database, or a bidirectional low-latency live audio/WebSocket
-session. Those require additional implementation and integration tests before production use.
+audio transcription, speech synthesis and Live API token provisioning. The frontend must
+implement microphone capture, PCM conversion, the direct Gemini Live WebSocket connection,
+audio playback, interruption handling and session recovery. Persistent conversation history,
+user authentication and database storage are not implemented yet.
