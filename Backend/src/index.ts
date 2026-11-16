@@ -8,6 +8,7 @@ import conversationRoutes from "./routes/conversation.routes.js";
 import translationRoutes from "./routes/translation.routes.js";
 import speechRoutes from "./routes/speech.routes.js";
 import audioRoutes from "./routes/audio.routes.js";
+import liveRoutes from "./routes/live.routes.js";
 
 const app = express();
 
@@ -41,6 +42,7 @@ app.use("/api/v1/conversation", conversationRoutes);
 app.use("/api/v1/translation", translationRoutes);
 app.use("/api/v1/speech", speechRoutes);
 app.use("/api/v1/audio", audioRoutes);
+app.use("/api/v1/live", liveRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({ success: false, error: "Route not found." });
