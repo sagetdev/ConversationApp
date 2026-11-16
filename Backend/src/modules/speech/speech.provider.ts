@@ -1,4 +1,5 @@
 import { gemini, GEMINI_LIVE_MODEL } from "../../lib/gemini.js";
+import { Modality } from "@google/genai";
 import { AppError } from "../../lib/errors.js";
 import type { SpeechTranscriptionEvent } from "./speech.types.js";
 
@@ -15,7 +16,7 @@ export async function createLiveSpeechSession(
     const session = await gemini.live.connect({
       model: GEMINI_LIVE_MODEL,
       config: {
-        responseModalities: ["TEXT"],
+        responseModalities: [Modality.TEXT],
         inputAudioTranscription: {}
       },
       callbacks: {
