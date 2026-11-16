@@ -42,9 +42,6 @@ export async function createLiveSessionToken(input: LiveTokenInput): Promise<Liv
           responseModalities: [Modality.AUDIO],
           inputAudioTranscription: {},
           outputAudioTranscription: {},
-          speechConfig: {
-            languageCode: input.targetLanguage,
-          },
           systemInstruction: {
             parts: [{ text: systemInstruction }],
           },
