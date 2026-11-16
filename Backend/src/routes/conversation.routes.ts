@@ -20,6 +20,8 @@ const turnSchema = z.object({
   sourceLanguage: z.string().min(2).max(40).optional()
 });
 
+const conversationIdSchema = z.string().min(1).max(128);
+
 router.post("/", asyncHandler(async (req, res) => {
   const input = createSchema.parse(req.body);
   const conversation = await createConversation(input);
@@ -27,14 +29,16 @@ router.post("/", asyncHandler(async (req, res) => {
 }));
 
 router.get("/:conversationId", asyncHandler(async (req, res) => {
-  const conversation = await getConversation(req.params.conversationId);
+  const conversationId = conversationIdSchema.parse(req.params.conversationId);
+  const conversation = await getConversation(conversationId);
   sendSuccess(res, conversation);
 }));
 
 router.post("/:conversationId/turns", asyncHandler(async (req, res) => {
+  const conversationId = conversationIdSchema.parse(req.params.conversationId);
   const input = turnSchema.parse(req.body);
   const result = await processConversationTurn({
-    conversationId: req.params.conversationId,
+    conversationId,
     text: input.text,
     sourceLanguage: input.sourceLanguage
   });
