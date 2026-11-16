@@ -22,7 +22,7 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: "13mb" }));
 
 app.use("/api", rateLimit({
   windowMs: 60_000,
