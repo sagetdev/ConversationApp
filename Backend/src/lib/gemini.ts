@@ -1,15 +1,7 @@
-
 import { GoogleGenAI } from "@google/genai";
+import { env } from "../config/env.js";
 
-const apiKey = process.env.GEMINI_API_KEY;
-
-if (!apiKey) {
-  throw new Error("GEMINI_API_KEY is missing from environment variables.");
-}
-
-export const gemini = new GoogleGenAI({
-  apiKey,
-});
-
-export const GEMINI_TEXT_MODEL =
-  process.env.GEMINI_TEXT_MODEL || "gemini-3.8-flash";
+export const gemini = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+export const GEMINI_TEXT_MODEL = env.GEMINI_TEXT_MODEL;
+export const GEMINI_LIVE_MODEL = env.GEMINI_LIVE_MODEL;
+export const GEMINI_TTS_MODEL = env.GEMINI_TTS_MODEL;
