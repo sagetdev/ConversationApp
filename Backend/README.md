@@ -37,6 +37,7 @@ Base URL: `http://localhost:4000/api/v1`
 - `POST /conversation/suggestions`: generate three suggested replies
 - `POST /conversation/process`: translate a message and generate three replies
 - `POST /speech/transcribe`: transcribe a base64 audio payload
+- `POST /audio/synthesize`: generate WAV speech audio from text
 
 ### Translation request
 
@@ -68,9 +69,21 @@ Base URL: `http://localhost:4000/api/v1`
 }
 ```
 
-## Current scope
+### Text-to-speech request
 
-This backend currently provides request/response translation, reply suggestions and audio transcription.
-Persistent conversation history, user authentication, text-to-speech playback, and a true bidirectional
-live audio/WebSocket session are not implemented yet. They must be added with their own provider,
-storage, authorization and integration tests before being considered production-ready.
+```json
+{
+  "text": "Bonjour, comment allez-vous ?",
+  "languageCode": "fr-FR",
+  "voice": "Kore"
+}
+```
+
+The speech synthesis endpoint returns base64-encoded mono WAV audio at 24 kHz.
+
+## Current scope and limitations
+
+The backend currently provides request/response translation, three reply suggestions,
+audio transcription and speech synthesis. It does not yet provide persistent conversation
+history, user authentication, a database, or a bidirectional low-latency live audio/WebSocket
+session. Those require additional implementation and integration tests before production use.
