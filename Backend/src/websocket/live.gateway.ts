@@ -8,7 +8,10 @@ import { createLiveSpeechSession } from "../modules/speech/speech.service.js";
 import { processConversationTurn } from "../modules/conversation/conversation.service.js";
 
 const clientMessageSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("audio.chunk"), audioBase64: z.string().min(1).max(90_000) }),
+  z.object({
+    type: z.literal("audio.chunk"),
+    audioBase64: z.string().min(4).max(90_000).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/)
+  }),
   z.object({ type: z.literal("audio.end") }),
   z.object({ type: z.literal("ping") })
 ]);
@@ -16,20 +19,40 @@ const clientMessageSchema = z.discriminatedUnion("type", [
 type ClientMessage = z.infer<typeof clientMessageSchema>;
 
 function sendJson(socket: WebSocket, payload: Record<string, unknown>): void {
-  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(payload));
+  }
+}
+
+function closeLiveSession(session: Awaited<ReturnType<typeof createLiveSpeechSession>> | undefined): void {
+  if (!session) return;
+  try {
+    session.close();
+  } catch (error) {
+    console.warn("Unable to close Gemini Live session cleanly:", error);
+  }
 }
 
 export function attachLiveGateway(server: Server): void {
-  const wss = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024, perMessageDeflate: false });
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: 128 * 1024,
+    perMessageDeflate: false
+  });
   const connectionsByIp = new Map<string, number>();
 
   const handleConnection = (socket: WebSocket, ip: string, conversationId: string | null): void => {
     let closed = false;
+    let audioEnded = false;
+    let connectionReleased = false;
     let liveSession: Awaited<ReturnType<typeof createLiveSpeechSession>> | undefined;
     let lastFinalTranscript = "";
     let lastFinalAt = 0;
+    let turnQueue: Promise<void> = Promise.resolve();
 
     const releaseConnection = () => {
+      if (connectionReleased) return;
+      connectionReleased = true;
       const count = connectionsByIp.get(ip) ?? 1;
       if (count <= 1) connectionsByIp.delete(ip);
       else connectionsByIp.set(ip, count - 1);
@@ -38,12 +61,16 @@ export function attachLiveGateway(server: Server): void {
     socket.once("close", () => {
       closed = true;
       releaseConnection();
-      liveSession?.close();
+      closeLiveSession(liveSession);
     });
 
     void (async () => {
       if (!conversationId) {
-        sendJson(socket, { type: "error", code: "CONVERSATION_ID_REQUIRED", message: "conversationId is required." });
+        sendJson(socket, {
+          type: "error",
+          code: "CONVERSATION_ID_REQUIRED",
+          message: "conversationId is required."
+        });
         socket.close(1008, "conversationId is required");
         return;
       }
@@ -52,8 +79,13 @@ export function attachLiveGateway(server: Server): void {
         where: { id: conversationId },
         select: { id: true }
       });
+
       if (!conversation) {
-        sendJson(socket, { type: "error", code: "CONVERSATION_NOT_FOUND", message: "Conversation not found." });
+        sendJson(socket, {
+          type: "error",
+          code: "CONVERSATION_NOT_FOUND",
+          message: "Conversation not found."
+        });
         socket.close(1008, "Conversation not found");
         return;
       }
@@ -65,6 +97,7 @@ export function attachLiveGateway(server: Server): void {
           sendJson(socket, { type: event.type, text: event.text });
           return;
         }
+
         if (event.type === "speech.error") {
           sendJson(socket, { type: event.type, message: event.message });
           return;
@@ -78,29 +111,43 @@ export function attachLiveGateway(server: Server): void {
         sendJson(socket, { type: "transcript.final", text: event.text });
         sendJson(socket, { type: "turn.processing" });
 
-        void processConversationTurn({ conversationId, text: event.text })
-          .then((result) => sendJson(socket, { type: "turn.result", ...result }))
-          .catch((error: unknown) => {
+        // Preserve utterance order so concurrent Gemini requests cannot reorder the history.
+        turnQueue = turnQueue.then(async () => {
+          if (closed) return;
+          try {
+            const result = await processConversationTurn({ conversationId, text: event.text });
+            sendJson(socket, { type: "turn.result", ...result });
+          } catch (error) {
             console.error("Unable to process live transcript:", error);
             sendJson(socket, {
               type: "turn.error",
               message: "The transcript was received, but translation or suggestions failed."
             });
-          });
+          }
+        });
       });
 
       if (closed) {
-        liveSession.close();
+        closeLiveSession(liveSession);
         return;
       }
 
       sendJson(socket, {
         type: "session.ready",
-        audio: { encoding: "PCM_S16LE", sampleRate: 16000, channels: 1, mimeType: "audio/pcm;rate=16000" }
+        audio: {
+          encoding: "PCM_S16LE",
+          sampleRate: 16000,
+          channels: 1,
+          mimeType: "audio/pcm;rate=16000"
+        }
       });
     })().catch((error: unknown) => {
       console.error("Live gateway initialization failed:", error);
-      sendJson(socket, { type: "error", code: "LIVE_SESSION_FAILED", message: "Unable to start live session." });
+      sendJson(socket, {
+        type: "error",
+        code: "LIVE_SESSION_FAILED",
+        message: "Unable to start live session."
+      });
       socket.close(1011, "Unable to start live session");
     });
 
@@ -118,16 +165,31 @@ export function attachLiveGateway(server: Server): void {
         return;
       }
 
-      switch (parsed.type) {
-        case "audio.chunk":
-          liveSession.sendAudio(parsed.audioBase64);
-          break;
-        case "audio.end":
-          liveSession.endAudio();
-          break;
-        case "ping":
-          sendJson(socket, { type: "pong", timestamp: Date.now() });
-          break;
+      try {
+        switch (parsed.type) {
+          case "audio.chunk":
+            if (audioEnded) {
+              sendJson(socket, { type: "error", code: "AUDIO_STREAM_ENDED", message: "This audio stream has already ended." });
+              return;
+            }
+            liveSession.sendAudio(parsed.audioBase64);
+            break;
+          case "audio.end":
+            if (!audioEnded) {
+              audioEnded = true;
+              liveSession.endAudio();
+            }
+            break;
+          case "ping":
+            sendJson(socket, { type: "pong", timestamp: Date.now() });
+            break;
+        }
+      } catch (error) {
+        console.error("Unable to forward client audio to Gemini Live:", error);
+        sendJson(socket, {
+          type: "speech.error",
+          message: "Audio could not be forwarded to the live transcription service."
+        });
       }
     });
 
@@ -150,7 +212,7 @@ export function attachLiveGateway(server: Server): void {
 
     const origin = request.headers.origin;
     if (origin && !allowedOrigins.has(origin)) {
-      socket.write("HTTP/1.1 403 Forbidden\\r\\n\\r\\n");
+      socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
       socket.destroy();
       return;
     }
@@ -158,7 +220,7 @@ export function attachLiveGateway(server: Server): void {
     const ip = request.socket.remoteAddress ?? "unknown";
     const current = connectionsByIp.get(ip) ?? 0;
     if (current >= env.WS_MAX_CONNECTIONS_PER_IP) {
-      socket.write("HTTP/1.1 429 Too Many Requests\\r\\n\\r\\n");
+      socket.write("HTTP/1.1 429 Too Many Requests\r\n\r\n");
       socket.destroy();
       return;
     }
