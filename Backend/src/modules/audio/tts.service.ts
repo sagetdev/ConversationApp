@@ -1,3 +1,4 @@
+import { Modality } from "@google/genai";
 import { gemini } from "../../lib/gemini.js";
 import type { TextToSpeechInput, TextToSpeechResult } from "./audio.types.js";
 
@@ -37,7 +38,7 @@ export async function synthesizeSpeech(input: TextToSpeechInput): Promise<TextTo
     model: TTS_MODEL,
     contents: text,
     config: {
-      responseModalities: ["AUDIO"],
+      responseModalities: [Modality.AUDIO],
       speechConfig: {
         voiceConfig: {
           prebuiltVoiceConfig: { voiceName: voice },
@@ -51,15 +52,10 @@ export async function synthesizeSpeech(input: TextToSpeechInput): Promise<TextTo
     ?.flatMap((candidate) => candidate.content?.parts ?? [])
     .find((part) => part.inlineData?.data)?.inlineData?.data;
 
-  if (!audioData) {
-    throw new Error("The text-to-speech provider returned no audio.");
-  }
+  if (!audioData) throw new Error("The text-to-speech provider returned no audio.");
 
   const pcm = Buffer.from(audioData, "base64");
-
-  if (pcm.length === 0) {
-    throw new Error("The text-to-speech provider returned empty audio.");
-  }
+  if (pcm.length === 0) throw new Error("The text-to-speech provider returned empty audio.");
 
   return {
     audioBase64: pcmToWav(pcm, 24000).toString("base64"),
